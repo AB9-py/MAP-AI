@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { estimateGeminiCostUsd, extractJsonPayload } from '../lib/gemini';
+import { estimateGeminiCostUsd, extractJsonPayload, getGeminiConfig } from '../lib/gemini';
 import { POST as restartRun } from '../app/api/runs/restart/route';
 import { POST as forkRun } from '../app/api/runs/fork/route';
 import {
@@ -29,6 +29,50 @@ describe('Map AI 2.1 observability', () => {
   it('keeps malformed provider output isolated for safe fallback handling', () => {
     expect(() => JSON.parse(extractJsonPayload('not valid json'))).toThrow();
     expect(extractJsonPayload('```json\n{"ok":true}\n```')).toBe('{"ok":true}');
+  });
+
+  it('normalizes quoted env values and rejects placeholders without exposing secrets', () => {
+    const previousKey = process.env.GEMINI_API_KEY;
+    const previousModel = process.env.GEMINI_MODEL;
+    process.env.GEMINI_API_KEY = ' "your_gemini_api_key" ';
+    process.env.GEMINI_MODEL = ' "gemini-test" ';
+    expect(getGeminiConfig()).toEqual({ model: 'gemini-test', hasApiKey: false });
+    process.env.GEMINI_API_KEY = ' "valid-looking-key-without-printing-it-1234567890" ';
+    expect(getGeminiConfig().hasApiKey).toBe(true);
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = previousModel;
+  });
+
+  it('returns the persisted six-step trace when credentials are missing', async () => {
+    const sessionId = randomUUID();
+    sessionIds.push(sessionId);
+    createSession(sessionId, 'invalid-key regression', 'upload');
+    insertFile(randomUUID(), sessionId, 'main.c', 'int main(void) { return 0; }');
+    const previousKey = process.env.GEMINI_API_KEY;
+    const previousDemoMode = process.env.GEMINI_DEMO_MODE;
+    process.env.GEMINI_API_KEY = ' "your_gemini_api_key" ';
+    delete process.env.GEMINI_DEMO_MODE;
+    try {
+      const { POST } = await import('../app/api/agent/stream/route');
+      const response = await POST(new NextRequest('http://localhost/api/agent/stream', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId, userPrompt: 'Trace this C_miniprojekt safely.' }),
+        headers: { 'content-type': 'application/json' },
+      }));
+      const body = await response.json();
+      expect(response.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.runId).toBeTruthy();
+      expect(body.steps).toHaveLength(6);
+      expect(body.detail).toContain('GEMINI_API_KEY');
+    } finally {
+      if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousKey;
+      if (previousDemoMode === undefined) delete process.env.GEMINI_DEMO_MODE;
+      else process.env.GEMINI_DEMO_MODE = previousDemoMode;
+    }
   });
 
   it('persists immutable run lineage and trace steps', () => {

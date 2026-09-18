@@ -156,11 +156,17 @@ export const SplitLayout: React.FC = () => {
         setLastRunId(data.runId);
         void refreshObservability(session.id);
       } else {
+        if (data.steps?.length) setLastSteps(data.steps);
+        if (data.runId) {
+          setLastRunId(data.runId);
+          void refreshObservability(session.id);
+        }
         setMessages(prev => [...prev, {
           id: `msg-err-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Error: ${data.error ?? 'Analysis failed. Please try again.'}`,
+          content: `⚠️ Error: ${data.error ?? 'Analysis failed. Please try again.'}${data.detail ? `\n\n${data.detail}` : ''}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          steps: data.steps ?? [],
         }]);
       }
     } catch {

@@ -1,6 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
 
 const DEFAULT_MODEL = 'gemini-3.6-flash';
+const PLACEHOLDER_KEYS = new Set(['your_gemini_api_key', 'your-gemini-api-key', 'replace_me', 'changeme']);
+
+function normalizeEnvValue(value: string | undefined): string {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed.length >= 2 && ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
 
 export interface DebugFile {
   path: string;
@@ -31,9 +40,11 @@ export interface GeminiUsage {
 }
 
 export function getGeminiConfig(): { model: string; hasApiKey: boolean } {
+  const apiKey = normalizeEnvValue(process.env.GEMINI_API_KEY);
+  const model = normalizeEnvValue(process.env.GEMINI_MODEL);
   return {
-    model: process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL,
-    hasApiKey: Boolean(process.env.GEMINI_API_KEY?.trim()),
+    model: model || DEFAULT_MODEL,
+    hasApiKey: apiKey.length > 20 && !PLACEHOLDER_KEYS.has(apiKey.toLowerCase()),
   };
 }
 
@@ -94,7 +105,7 @@ export async function analyzeCode(files: DebugFile[], userPrompt: string): Promi
   if (!config.hasApiKey) {
     throw new Error('GEMINI_API_KEY is not loaded at server startup. Set it in .env.local and restart the server.');
   }
-  const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
+  const genai = new GoogleGenAI({ apiKey: normalizeEnvValue(process.env.GEMINI_API_KEY) });
 
   // Build a file tree string
   const tree = files.map(f => `  ${f.path}`).join('\n');
