@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { Message, FileEntry, AnalysisStep } from '@/lib/types';
+import type { FailureEvent, Message, FileEntry, AnalysisStep, RunSummary } from '@/lib/types';
 import { Header } from './Header';
 import { OnboardingCard } from './OnboardingCard';
 import { ChatPanel } from './ChatPanel';
@@ -29,6 +29,52 @@ export const SplitLayout: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [lastDiff, setLastDiff] = useState<Message['codeDiff'] | null>(null);
   const [lastSteps, setLastSteps] = useState<AnalysisStep[]>([]);
+  const [failures, setFailures] = useState<FailureEvent[]>([]);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [lastRunId, setLastRunId] = useState<string | undefined>();
+
+  const refreshObservability = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/runs?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setRuns((data.runs ?? []).map((run: {
+        id: string;
+        parent_run_id: string | null;
+        fork_step_id: string | null;
+        status: RunSummary['status'];
+        prompt: string;
+        estimated_cost_usd: number;
+        started_at: string;
+      }) => ({
+        id: run.id,
+        parentRunId: run.parent_run_id,
+        forkedFromStepId: run.fork_step_id,
+        status: (run.status as string) === 'failed' ? 'error' : run.status,
+        prompt: run.prompt,
+        totalCostUsd: run.estimated_cost_usd,
+        createdAt: run.started_at,
+      })));
+      setFailures((data.failures ?? []).map((failure: {
+        id: string;
+        run_id: string;
+        step_id: string | null;
+        code: string;
+        message: string;
+        created_at: string;
+      }) => ({
+        id: failure.id,
+        runId: failure.run_id,
+        stepId: failure.step_id ?? undefined,
+        kind: failure.code === 'GEMINI_REQUEST_FAILED' ? 'retry' : 'failure',
+        message: failure.message,
+        createdAt: failure.created_at,
+      })));
+      if (!lastRunId && data.runs?.[0]?.id) setLastRunId(data.runs[0].id);
+    } catch {
+      // The analysis result remains usable when optional observability refresh fails.
+    }
+  };
 
   const handleSessionCreated = (sessionId: string, loadedFiles: FileEntry[]) => {
     // We need the session info — derive it from files response or re-fetch
@@ -50,6 +96,10 @@ export const SplitLayout: React.FC = () => {
     setSelectedFile(null);
     setLastDiff(null);
     setLastSteps([]);
+    setFailures([]);
+    setRuns([]);
+    setLastRunId(undefined);
+    void refreshObservability(sessionId);
   };
 
   const handleNewSession = () => {
@@ -59,6 +109,9 @@ export const SplitLayout: React.FC = () => {
     setSelectedFile(null);
     setLastDiff(null);
     setLastSteps([]);
+    setFailures([]);
+    setRuns([]);
+    setLastRunId(undefined);
   };
 
   const handleSendMessage = async (text: string) => {
@@ -100,6 +153,8 @@ export const SplitLayout: React.FC = () => {
 
         if (data.suggestedDiff) setLastDiff(data.suggestedDiff);
         if (data.steps?.length) setLastSteps(data.steps);
+        setLastRunId(data.runId);
+        void refreshObservability(session.id);
       } else {
         setMessages(prev => [...prev, {
           id: `msg-err-${Date.now()}`,
@@ -108,7 +163,7 @@ export const SplitLayout: React.FC = () => {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }]);
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, {
         id: `msg-err-${Date.now()}`,
         role: 'assistant',
@@ -117,6 +172,57 @@ export const SplitLayout: React.FC = () => {
       }]);
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const restartRun = async (runId?: string) => {
+    if (!session || isRunning) return;
+    setIsRunning(true);
+    try {
+      const res = await fetch('/api/runs/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: runId ?? lastRunId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLastSteps(data.steps ?? []);
+        if (data.explanation) {
+          setMessages(prev => [...prev, {
+            id: `msg-restart-${Date.now()}`,
+            role: 'assistant',
+            content: data.explanation,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            steps: data.steps ?? [],
+          }]);
+        }
+      }
+      await refreshObservability(session.id);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const forkFromStep = async (stepId: string) => {
+    if (!session || isRunning) return;
+    try {
+      const res = await fetch('/api/runs/fork', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: lastRunId, stepId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => [...prev, {
+          id: `msg-fork-${Date.now()}`,
+          role: 'system',
+          content: `Fork created from step ${stepId.slice(0, 8)}.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+        await refreshObservability(session.id);
+      }
+    } catch {
+      // Fork controls are best-effort and never interrupt the active session.
     }
   };
 
@@ -148,6 +254,10 @@ export const SplitLayout: React.FC = () => {
             sessionId={session.id}
             lastDiff={lastDiff}
             lastSteps={lastSteps}
+            failures={failures}
+            runs={runs}
+            onRestart={restartRun}
+            onFork={forkFromStep}
           />
         </div>
       )}

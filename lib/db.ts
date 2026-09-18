@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import fs from 'fs';
 
 const DB_PATH = path.join(process.cwd(), 'debug.db');
 
@@ -36,7 +35,113 @@ function initSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_files_session ON files(session_id);
+
+    CREATE TABLE IF NOT EXISTS runs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      parent_run_id TEXT REFERENCES runs(id),
+      fork_step_id TEXT,
+      prompt TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'success', 'failed', 'cancelled')),
+      attempt INTEGER NOT NULL DEFAULT 1,
+      model TEXT,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_usd REAL NOT NULL DEFAULT 0,
+      error_message TEXT,
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_runs_parent ON runs(parent_run_id);
+
+    CREATE TABLE IF NOT EXISTS trace_steps (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      step_index INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('local', 'gemini', 'fallback')),
+      status TEXT NOT NULL CHECK(status IN ('running', 'success', 'failed', 'warning', 'healed')),
+      description TEXT NOT NULL DEFAULT '',
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_usd REAL NOT NULL DEFAULT 0,
+      metadata_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(run_id, step_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trace_steps_run ON trace_steps(run_id, step_index);
+
+    CREATE TABLE IF NOT EXISTS failure_events (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      step_id TEXT REFERENCES trace_steps(id),
+      code TEXT NOT NULL,
+      message TEXT NOT NULL,
+      retryable INTEGER NOT NULL DEFAULT 0,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_failure_events_run ON failure_events(run_id, created_at);
   `);
+}
+
+export interface Run {
+  id: string; session_id: string; parent_run_id: string | null; fork_step_id: string | null;
+  prompt: string; status: 'running' | 'success' | 'failed' | 'cancelled'; attempt: number;
+  model: string | null; prompt_tokens: number; output_tokens: number; estimated_cost_usd: number;
+  error_message: string | null; started_at: string; completed_at: string | null;
+}
+export interface TraceStep {
+  id: string; run_id: string; step_index: number; name: string;
+  kind: 'local' | 'gemini' | 'fallback'; status: string; description: string;
+  duration_ms: number; prompt_tokens: number; output_tokens: number;
+  estimated_cost_usd: number; metadata_json: string | null; created_at: string;
+}
+export interface FailureEvent {
+  id: string; run_id: string; step_id: string | null; code: string; message: string;
+  retryable: number; attempt: number; created_at: string;
+}
+
+export type NewRun = Pick<Run, 'id' | 'session_id' | 'prompt'> &
+  Partial<Pick<Run, 'parent_run_id' | 'fork_step_id' | 'status' | 'attempt' | 'model'>>;
+export function createRun(run: NewRun) {
+  const db = getDb();
+  db.prepare(`INSERT INTO runs (id, session_id, parent_run_id, fork_step_id, prompt, status, attempt, model)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(run.id, run.session_id, run.parent_run_id ?? null, run.fork_step_id ?? null,
+    run.prompt, run.status ?? 'running', run.attempt ?? 1, run.model ?? null);
+  return getRun(run.id)!;
+}
+export function getRun(id: string) { return getDb().prepare('SELECT * FROM runs WHERE id = ?').get(id) as Run | undefined; }
+export function getRuns(sessionId: string) { return getDb().prepare('SELECT * FROM runs WHERE session_id = ? ORDER BY started_at DESC').all(sessionId) as Run[]; }
+export function updateRun(id: string, values: Partial<Pick<Run, 'status' | 'model' | 'prompt_tokens' | 'output_tokens' | 'estimated_cost_usd' | 'error_message' | 'completed_at'>>) {
+  const allowed = Object.keys(values);
+  if (!allowed.length) return;
+  const set = allowed.map(k => `${k} = @${k}`).join(', ');
+  getDb().prepare(`UPDATE runs SET ${set} WHERE id = @id`).run({ ...values, id });
+}
+export function addTraceStep(step: Omit<TraceStep, 'created_at' | 'prompt_tokens' | 'output_tokens' | 'estimated_cost_usd' | 'metadata_json'> & Partial<Pick<TraceStep, 'prompt_tokens' | 'output_tokens' | 'estimated_cost_usd' | 'metadata_json'>>) {
+  getDb().prepare(`INSERT INTO trace_steps (id, run_id, step_index, name, kind, status, description, duration_ms, prompt_tokens, output_tokens, estimated_cost_usd, metadata_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(step.id, step.run_id, step.step_index, step.name, step.kind, step.status,
+    step.description, step.duration_ms, step.prompt_tokens ?? 0, step.output_tokens ?? 0, step.estimated_cost_usd ?? 0, step.metadata_json ?? null);
+  return getTraceStep(step.id)!;
+}
+export function getTraceStep(id: string) { return getDb().prepare('SELECT * FROM trace_steps WHERE id = ?').get(id) as TraceStep | undefined; }
+export function getTraceSteps(runId: string) { return getDb().prepare('SELECT * FROM trace_steps WHERE run_id = ? ORDER BY step_index').all(runId) as TraceStep[]; }
+export function addFailureEvent(event: Omit<FailureEvent, 'created_at' | 'step_id'> & Partial<Pick<FailureEvent, 'step_id'>>) {
+  getDb().prepare(`INSERT INTO failure_events (id, run_id, step_id, code, message, retryable, attempt) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(event.id, event.run_id, event.step_id ?? null, event.code, event.message, event.retryable ? 1 : 0, event.attempt);
+}
+export function getFailureEvents(runId: string) { return getDb().prepare('SELECT * FROM failure_events WHERE run_id = ? ORDER BY created_at').all(runId) as FailureEvent[]; }
+export function getSessionFailureEvents(sessionId: string) {
+  return getDb().prepare(`
+    SELECT failure_events.*
+    FROM failure_events
+    JOIN runs ON runs.id = failure_events.run_id
+    WHERE runs.session_id = ?
+    ORDER BY failure_events.created_at DESC
+  `).all(sessionId) as FailureEvent[];
 }
 
 export function createSession(id: string, name: string, source: 'upload' | 'github', repoUrl?: string) {

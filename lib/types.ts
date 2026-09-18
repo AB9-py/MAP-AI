@@ -43,4 +43,27 @@ export interface AnalysisStep {
   status: 'success' | 'error' | 'warning' | 'healed';
   description: string;
   durationMs: number;
+  kind?: 'local' | 'gemini' | 'retry' | 'fallback';
+  apiCostUsd?: number;
+  runId?: string;
+}
+
+export interface FailureEvent {
+  id: string;
+  runId?: string;
+  stepId?: string;
+  kind: 'failure' | 'retry' | 'fallback';
+  message: string;
+  createdAt?: string;
+  resolved?: boolean;
+}
+
+export interface RunSummary {
+  id: string;
+  parentRunId?: string | null;
+  forkedFromStepId?: string | null;
+  status: 'running' | 'success' | 'error' | 'cancelled';
+  prompt?: string;
+  totalCostUsd?: number;
+  createdAt?: string;
 }
