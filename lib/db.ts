@@ -85,6 +85,16 @@ function initSchema(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_failure_events_run ON failure_events(run_id, created_at);
   `);
+  const failureColumns = db.prepare(`PRAGMA table_info(failure_events)`).all() as Array<{ name: string }>;
+  const existing = new Set(failureColumns.map(column => column.name));
+  for (const [name, definition] of [
+    ['file_path', 'TEXT'],
+    ['line_number', 'INTEGER'],
+    ['root_cause', 'TEXT'],
+    ['recovery', 'TEXT'],
+  ] as const) {
+    if (!existing.has(name)) db.exec(`ALTER TABLE failure_events ADD COLUMN ${name} ${definition}`);
+  }
 }
 
 export interface Run {
@@ -101,7 +111,8 @@ export interface TraceStep {
 }
 export interface FailureEvent {
   id: string; run_id: string; step_id: string | null; code: string; message: string;
-  retryable: number; attempt: number; created_at: string;
+  retryable: number; attempt: number; created_at: string; file_path?: string | null;
+  line_number?: number | null; root_cause?: string | null; recovery?: string | null;
 }
 
 export type NewRun = Pick<Run, 'id' | 'session_id' | 'prompt'> &
@@ -130,8 +141,9 @@ export function addTraceStep(step: Omit<TraceStep, 'created_at' | 'prompt_tokens
 export function getTraceStep(id: string) { return getDb().prepare('SELECT * FROM trace_steps WHERE id = ?').get(id) as TraceStep | undefined; }
 export function getTraceSteps(runId: string) { return getDb().prepare('SELECT * FROM trace_steps WHERE run_id = ? ORDER BY step_index').all(runId) as TraceStep[]; }
 export function addFailureEvent(event: Omit<FailureEvent, 'created_at' | 'step_id'> & Partial<Pick<FailureEvent, 'step_id'>>) {
-  getDb().prepare(`INSERT INTO failure_events (id, run_id, step_id, code, message, retryable, attempt) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(event.id, event.run_id, event.step_id ?? null, event.code, event.message, event.retryable ? 1 : 0, event.attempt);
+  getDb().prepare(`INSERT INTO failure_events (id, run_id, step_id, code, message, retryable, attempt, file_path, line_number, root_cause, recovery) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(event.id, event.run_id, event.step_id ?? null, event.code, event.message, event.retryable ? 1 : 0, event.attempt,
+      event.file_path ?? null, event.line_number ?? null, event.root_cause ?? null, event.recovery ?? null);
 }
 export function getFailureEvents(runId: string) { return getDb().prepare('SELECT * FROM failure_events WHERE run_id = ? ORDER BY created_at').all(runId) as FailureEvent[]; }
 export function getSessionFailureEvents(sessionId: string) {
@@ -187,6 +199,21 @@ export function getSessionFiles(sessionId: string) {
 export function getFileContent(sessionId: string, filePath: string) {
   const db = getDb();
   return db.prepare(`SELECT content FROM files WHERE session_id = ? AND path = ?`).get(sessionId, filePath) as { content: string } | undefined;
+}
+
+export function applySessionPatch(sessionId: string, filePath: string, oldCode: string, newCode: string) {
+  const db = getDb();
+  const file = db.prepare(`SELECT content FROM files WHERE session_id = ? AND path = ?`).get(sessionId, filePath) as { content: string } | undefined;
+  if (!file) return { success: false, error: 'File is not part of this session snapshot.' };
+  const firstIndex = file.content.indexOf(oldCode);
+  if (!oldCode || firstIndex < 0) return { success: false, error: 'Patch rejected: the expected original code was not found.' };
+  if (file.content.indexOf(oldCode, firstIndex + oldCode.length) >= 0) {
+    return { success: false, error: 'Patch rejected: original code is ambiguous; include a more specific snippet.' };
+  }
+  const content = file.content.slice(0, firstIndex) + newCode + file.content.slice(firstIndex + oldCode.length);
+  db.prepare(`UPDATE files SET content = ?, size_bytes = ? WHERE session_id = ? AND path = ?`)
+    .run(content, Buffer.byteLength(content, 'utf8'), sessionId, filePath);
+  return { success: true, filePath, applied: true };
 }
 
 export function getFilesForContext(sessionId: string, limit = 30) {

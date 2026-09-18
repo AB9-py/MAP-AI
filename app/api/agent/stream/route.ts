@@ -77,6 +77,10 @@ export async function POST(req: NextRequest) {
       addFailureEvent({
         id: randomUUID(), run_id: run.id, step_id: geminiStepId, code: result.providerError.code,
         message: result.providerError.message, retryable: result.providerError.retryable ? 1 : 0, attempt: usage?.attempts ?? 1,
+        root_cause: result.providerError.message.includes('API_KEY_INVALID')
+          ? 'The configured Gemini credential was rejected by the provider.'
+          : 'The Gemini provider did not return a usable response.',
+        recovery: 'Check .env.local, remove placeholder/extra quotes, restart npm run dev, or enable GEMINI_DEMO_MODE=true.',
       });
     }
     updateRun(run.id, {
@@ -137,7 +141,11 @@ export async function POST(req: NextRequest) {
           estimated_cost_usd: 0,
         });
       }
-      addFailureEvent({ id: randomUUID(), run_id: runId, code: 'ANALYSIS_FAILED', message, retryable: 1, attempt: 1 });
+      addFailureEvent({
+        id: randomUUID(), run_id: runId, code: 'ANALYSIS_FAILED', message, retryable: 1, attempt: 1,
+        root_cause: 'The analysis pipeline failed before producing a complete provider result.',
+        recovery: 'Review the failure details, restart the run, or use GEMINI_DEMO_MODE=true for a deterministic local demo.',
+      });
       updateRun(runId, { status: 'failed', error_message: message, completed_at: new Date().toISOString() });
     }
     // A run may have been created before a local or provider failure. Keep the

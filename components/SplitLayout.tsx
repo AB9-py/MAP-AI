@@ -62,6 +62,10 @@ export const SplitLayout: React.FC = () => {
         code: string;
         message: string;
         created_at: string;
+        file_path?: string | null;
+        line_number?: number | null;
+        root_cause?: string | null;
+        recovery?: string | null;
       }) => ({
         id: failure.id,
         runId: failure.run_id,
@@ -69,6 +73,10 @@ export const SplitLayout: React.FC = () => {
         kind: failure.code === 'GEMINI_REQUEST_FAILED' ? 'retry' : 'failure',
         message: failure.message,
         createdAt: failure.created_at,
+        filePath: failure.file_path ?? undefined,
+        lineNumber: failure.line_number ?? undefined,
+        rootCause: failure.root_cause ?? undefined,
+        recovery: failure.recovery ?? undefined,
       })));
       if (!lastRunId && data.runs?.[0]?.id) setLastRunId(data.runs[0].id);
     } catch {
@@ -232,6 +240,22 @@ export const SplitLayout: React.FC = () => {
     }
   };
 
+  const applyPatch = async () => {
+    if (!session || !lastDiff) return;
+    const response = await fetch('/api/patch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: session.id, ...lastDiff }),
+    });
+    const data = await response.json();
+    setMessages(prev => [...prev, {
+      id: `msg-patch-${Date.now()}`,
+      role: 'system',
+      content: data.success ? `Applied patch to ${lastDiff.filePath} in the session snapshot.` : `Patch rejected: ${data.error}`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-neutral-950 text-neutral-100 overflow-hidden">
       <Header
@@ -264,6 +288,7 @@ export const SplitLayout: React.FC = () => {
             runs={runs}
             onRestart={restartRun}
             onFork={forkFromStep}
+            onApplyPatch={applyPatch}
           />
         </div>
       )}

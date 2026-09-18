@@ -75,6 +75,26 @@ describe('Map AI 2.1 observability', () => {
     }
   });
 
+  it('applies only explicit patches to the uploaded session snapshot', async () => {
+    const sessionId = randomUUID();
+    sessionIds.push(sessionId);
+    createSession(sessionId, 'patch regression', 'upload');
+    insertFile(randomUUID(), sessionId, 'main.c', 'int value = 1;');
+    const { POST } = await import('../app/api/patch/route');
+    const response = await POST(new NextRequest('http://localhost/api/patch', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, filePath: 'main.c', oldCode: 'int value = 1;', newCode: 'int value = 2;' }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    expect(response.status).toBe(200);
+    const conflict = await POST(new NextRequest('http://localhost/api/patch', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, filePath: 'main.c', oldCode: 'int value = 1;', newCode: 'int value = 3;' }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    expect(conflict.status).toBe(409);
+  });
+
   it('persists immutable run lineage and trace steps', () => {
     const sessionId = randomUUID();
     sessionIds.push(sessionId);

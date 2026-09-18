@@ -56,6 +56,10 @@ export interface FailureEvent {
   message: string;
   createdAt?: string;
   resolved?: boolean;
+  filePath?: string;
+  lineNumber?: number;
+  rootCause?: string;
+  recovery?: string;
 }
 
 export interface RunSummary {

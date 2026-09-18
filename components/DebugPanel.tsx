@@ -21,6 +21,7 @@ interface DebugPanelProps {
   runs?: RunSummary[];
   onRestart?: (runId?: string) => void;
   onFork?: (stepId: string) => void;
+  onApplyPatch?: () => void;
 }
 
 type Tab = 'files' | 'trace' | 'failures' | 'forks';
@@ -81,6 +82,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   runs = [],
   onRestart,
   onFork,
+  onApplyPatch,
 }) => {
   const [tab, setTab] = useState<Tab>('files');
   const [viewMode, setViewMode] = useState<'tree' | 'file'>('tree');
@@ -143,8 +145,22 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                   <RotateCcw className="h-3 w-3" /> Restart
                 </button>
               )}
+              {lastDiff && onApplyPatch && (
+                <button onClick={onApplyPatch} className="rounded-md border border-orange-700/60 px-2 py-1 text-[10px] text-orange-300 hover:bg-orange-950/30">
+                  Apply patch to snapshot
+                </button>
+              )}
             </div>
           )}
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-neutral-600 font-medium">Memory tiers</p>
+            <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[9px] text-neutral-500">
+              <span className="rounded bg-neutral-800 px-1 py-1">session</span>
+              <span className="rounded bg-neutral-800 px-1 py-1">files</span>
+              <span className="rounded bg-neutral-800 px-1 py-1">trace</span>
+              <span className="rounded bg-neutral-800 px-1 py-1">failures</span>
+            </div>
+          </div>
           {/* Last diff */}
           {lastDiff && (
             <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 overflow-hidden">
@@ -210,6 +226,13 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 {failure.resolved && <span className="ml-auto text-[10px] text-emerald-400">resolved</span>}
               </div>
               <p className="mt-1.5 text-[11px] text-neutral-400">{failure.message}</p>
+              {(failure.filePath || failure.lineNumber || failure.rootCause || failure.recovery) && (
+                <div className="mt-2 space-y-1 text-[10px] text-neutral-500">
+                  {failure.filePath && <p>Location: <span className="font-mono text-neutral-300">{failure.filePath}{failure.lineNumber ? `:${failure.lineNumber}` : ''}</span></p>}
+                  {failure.rootCause && <p>Root cause: {failure.rootCause}</p>}
+                  {failure.recovery && <p>Recovery: {failure.recovery}</p>}
+                </div>
+              )}
             </div>
           ))}
         </div>
