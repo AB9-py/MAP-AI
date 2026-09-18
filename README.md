@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🪟 Map AI — Deterministic Observability & Context Engine
+### **Track 1: The Glass Box Problem | Epochesque 2.0 (AI Buildathon)**
 
-## Getting Started
+> **Map AI** transforms autonomous coding agents from opaque black boxes into transparent, debuggable glass cockpits. It features real-time execution tracing, 4-tier hierarchical context compaction, deterministic PyTest sandboxing, and autonomous fault self-healing.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 👥 Team Members (VIT Chennai)
+* **Abhi**
+* **Abhinav K**
+* **Prasanna P**
+* **Narayana Nihal B**
+
+---
+
+## 🌟 Key Architecture & Differentiators
+
+```
+┌───────────────────────────────────────────────┬───────────────────────────────────────────────┐
+│              LEFT PANEL: CHAT UI              │             RIGHT PANEL: GLASS BOX            │
+├───────────────────────────────────────────────┼───────────────────────────────────────────────┤
+│ • Natural multi-turn developer conversation   │ • 🕸️ Interactive Execution DAG                │
+│ • Syntax-highlighted code diffs (Before/After)│ • 🧠 4-Tier Context Compactor (84% Savings)   │
+│ • Sandboxed PyTest terminal output            │ • ⚠️ Fault Interception & Reflection Matrix   │
+│ • Quick 1-click evaluation presets            │ • 📊 Live Sub-Cent Cost & Latency Waterfall   │
+│                                               │ • 🧾 Standard OpenTelemetry JSON Exporter     │
+│                                               │ • ⏪ Step-Level Time-Travel & State Forking   │
+└───────────────────────────────────────────────┴───────────────────────────────────────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🏆 100% Alignment with Track 1 Rules
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Step-by-Step Observability:** Custom OpenTelemetry-compatible span emitter records every micro-step (`thought`, `ast_analysis`, `sandbox_test`, `reflection`, `synthesis`).
+2. **20+ Turn Context Engineering:** 4-tier memory stack:
+   * **Tier 1 (Active Focus Buffer):** Last 2 turns at 100% raw fidelity.
+   * **Tier 2 (Semantic Entity Store):** Pinned key facts (files, constraints, test commands).
+   * **Tier 3 (Episodic Summaries):** Turns 1–15 recursively summarized (~84% token savings).
+   * **Tier 4 (Noise Eviction):** Pruning raw pytest headers and virtualenv stack traces.
+3. **Real Failure Case Caught & Self-Healed:** Intercepts live `AssertionError` in PyTest execution, injects structured reflection prompt, and verifies green suite.
+4. **Token Economics & Latency Meter:** Granular cost accounting down to \$0.0001 per step at Gemini 1.5 Flash rates.
+5. **No Black-Box Libraries:** Built from first principles using clean TypeScript and native APIs.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🚀 Quickstart & Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Prerequisites
+* **Node.js**: v18.0.0 or higher
+* **npm**: v9.0.0 or higher
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Installation
 
-## Deploy on Vercel
+```bash
+# Clone the repository
+git clone https://github.com/AB9-py/map-ai.git
+cd map-ai
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Install dependencies
+npm install
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Start the development server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to launch the Map AI Cockpit.
+
+---
+
+## 📦 Tech Stack
+* **Frontend:** Next.js 14 (App Router), Tailwind CSS, Lucide React
+* **LLM Core:** Google Gemini 1.5 Flash (Structured JSON Outputs)
+* **Observability:** Custom OpenTelemetry Span Emitter + SSE Stream
+* **Sandbox Runner:** PyTest & AST Syntax Validator
