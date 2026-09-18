@@ -1,141 +1,115 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Message } from '@/lib/types';
-import { Send, Terminal, FileCode, CheckCircle2, XCircle, Bot, User } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import type { Message, AnalysisStep } from '@/lib/types';
+import { Send, Bot, User, FileCode, CheckCircle2, Loader2 } from 'lucide-react';
 
 interface ChatPanelProps {
   messages: Message[];
   isRunning: boolean;
-  error: string | null;
+  selectedFile: string | null;
   onSendMessage: (text: string) => void;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   isRunning,
-  error,
-  onSendMessage
+  selectedFile,
+  onSendMessage,
 }) => {
   const [inputText, setInputText] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isRunning]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || isRunning) return;
-    onSendMessage(inputText);
+    onSendMessage(inputText.trim());
     setInputText('');
   };
 
+  const placeholder = selectedFile
+    ? `Ask about ${selectedFile.split('/').pop()}...`
+    : 'Ask anything about the codebase...';
+
   return (
-    <div className="flex flex-col h-full min-h-0 bg-neutral-950 border-r border-neutral-800 overflow-hidden">
-      {/* Panel Title */}
-      <div className="px-5 py-3 border-b border-neutral-800/80 bg-neutral-900/30 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-orange-400" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
-            Developer Chat & Sandbox
-          </h2>
-        </div>
-        <span className="text-[11px] font-mono text-neutral-400">
-          Turns: {messages.filter(m => m.role !== 'system').length}
-        </span>
-      </div>
-
-      {/* Messages Scroll Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-500/60 bg-red-950/40 px-3 py-2 text-xs text-red-200">
-            <XCircle className="w-4 h-4 text-red-400" />
-            <span>{error}</span>
-          </div>
-        )}
-
+    <div className="flex flex-col h-full min-h-0 bg-neutral-950 border-r border-neutral-800/60 overflow-hidden">
+      {/* Messages */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
         {messages.map((msg) => {
           if (msg.role === 'system') {
             return (
-              <div
-                key={msg.id}
-                className="p-3.5 rounded-lg bg-neutral-900/60 border border-neutral-800 text-xs text-neutral-400 font-mono"
-              >
+              <div key={msg.id} className="text-[11px] text-neutral-600 text-center font-mono py-2">
                 {msg.content}
               </div>
             );
           }
 
           const isUser = msg.role === 'user';
-
           return (
-            <div
-              key={msg.id}
-              className={`flex gap-3 text-sm ${isUser ? 'justify-end' : 'justify-start'}`}
-            >
+            <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {!isUser && (
-                <div className="w-7 h-7 rounded-full bg-orange-600/20 border border-orange-500/40 flex items-center justify-center text-orange-400 shrink-0 mt-0.5">
-                  <Bot className="w-3.5 h-3.5" />
+                <div className="w-6 h-6 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-3.5 h-3.5 text-orange-400" />
                 </div>
               )}
 
-              <div
-                className={`max-w-[85%] rounded-xl p-4 ${
-                  isUser
-                    ? 'bg-neutral-800 text-neutral-100 border border-neutral-700'
-                    : 'bg-neutral-900 text-neutral-200 border border-neutral-800'
-                }`}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between gap-4 mb-2 text-[11px] text-neutral-400 font-mono">
-                  <span>{isUser ? 'Developer' : 'Map AI Agent'}</span>
-                  <span>{msg.timestamp}</span>
+              <div className={`max-w-[88%] rounded-xl p-3.5 text-sm ${
+                isUser
+                  ? 'bg-neutral-800 text-neutral-100 border border-neutral-700/60'
+                  : 'bg-neutral-900 text-neutral-200 border border-neutral-800'
+              }`}>
+                <div className="text-[11px] text-neutral-500 font-mono mb-1.5">
+                  {isUser ? 'You' : 'Map AI'} · {msg.timestamp}
                 </div>
+                <div className="whitespace-pre-wrap leading-relaxed text-xs">{msg.content}</div>
 
-                {/* Message Body */}
-                <div className="whitespace-pre-wrap leading-relaxed text-xs">
-                  {msg.content}
-                </div>
+                {/* Affected files pills */}
+                {msg.affectedFiles && msg.affectedFiles.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {msg.affectedFiles.map(f => (
+                      <span key={f} className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        {f.split('/').pop()}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-                {/* Optional Code Diff Block */}
+                {/* Code diff */}
                 {msg.codeDiff && (
                   <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 overflow-hidden font-mono text-[11px]">
                     <div className="px-3 py-1.5 bg-neutral-900 border-b border-neutral-800 flex items-center gap-2 text-neutral-300">
                       <FileCode className="w-3.5 h-3.5 text-blue-400" />
-                      <span>{msg.codeDiff.filename} (Patch Applied)</span>
+                      <span>{msg.codeDiff.filePath}</span>
                     </div>
-                    <div className="p-3 overflow-x-auto space-y-2">
-                      <div className="text-red-400 bg-red-950/30 p-2 rounded border border-red-900/40">
-                        <div className="text-[10px] uppercase font-bold text-red-400 mb-1">- Previous Code:</div>
-                        <pre className="whitespace-pre">{msg.codeDiff.oldCode}</pre>
+                    <div className="p-3 space-y-2">
+                      <div className="text-red-400 bg-red-950/20 p-2 rounded border border-red-900/30">
+                        <div className="text-[10px] text-red-500 font-bold mb-1 uppercase">Before</div>
+                        <pre className="whitespace-pre-wrap">{msg.codeDiff.oldCode}</pre>
                       </div>
-                      <div className="text-emerald-400 bg-emerald-950/30 p-2 rounded border border-emerald-900/40">
-                        <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1">+ Healed Patch:</div>
-                        <pre className="whitespace-pre">{msg.codeDiff.newCode}</pre>
+                      <div className="text-emerald-400 bg-emerald-950/20 p-2 rounded border border-emerald-900/30">
+                        <div className="text-[10px] text-emerald-500 font-bold mb-1 uppercase">After</div>
+                        <pre className="whitespace-pre-wrap">{msg.codeDiff.newCode}</pre>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Optional PyTest Output Block */}
-                {msg.testOutput && (
-                  <div className="mt-3 rounded-lg border border-neutral-800 bg-black/80 overflow-hidden font-mono text-[11px]">
-                    <div className="px-3 py-1.5 bg-neutral-900/80 border-b border-neutral-800 flex items-center justify-between text-neutral-300">
-                      <div className="flex items-center gap-2">
-                        <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>PyTest Sandbox Runner</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>14/14 Green</span>
-                      </div>
-                    </div>
-                    <div className="p-3 overflow-x-auto text-neutral-300">
-                      <pre className="whitespace-pre text-emerald-400/90">{msg.testOutput.stdout}</pre>
-                    </div>
+                {/* Steps (collapsed summary) */}
+                {msg.steps && msg.steps.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 text-[10px] text-neutral-500">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    <span>{msg.steps.length} analysis steps — see Trace tab</span>
                   </div>
                 )}
               </div>
 
               {isUser && (
-                <div className="w-7 h-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-300 shrink-0 mt-0.5">
-                  <User className="w-3.5 h-3.5" />
+                <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-3.5 h-3.5 text-neutral-400" />
                 </div>
               )}
             </div>
@@ -143,25 +117,26 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         })}
 
         {isRunning && (
-          <div className="flex gap-3 items-center text-xs text-neutral-400 font-mono animate-pulse">
-            <div className="w-7 h-7 rounded-full bg-orange-600/20 border border-orange-500/40 flex items-center justify-center text-orange-400">
-              <Bot className="w-3.5 h-3.5" />
+          <div className="flex gap-3 items-center text-xs text-neutral-500 font-mono">
+            <div className="w-6 h-6 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
+              <Loader2 className="w-3.5 h-3.5 text-orange-400 animate-spin" />
             </div>
-            <span>Agent executing pipeline & streaming spans...</span>
+            <span>Analyzing codebase with Gemini...</span>
           </div>
         )}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Input Bar */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-neutral-800 bg-neutral-900/40">
+      {/* Input */}
+      <form onSubmit={handleSubmit} className="p-4 border-t border-neutral-800 bg-neutral-900/20 shrink-0">
         <div className="relative flex items-center">
           <input
             type="text"
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={e => setInputText(e.target.value)}
             disabled={isRunning}
-            placeholder="Type a debugging instruction (e.g., 'Fix calculate_discount in checkout.py')..."
-            className="w-full pl-4 pr-12 py-3 text-xs bg-neutral-900 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-50 font-sans"
+            placeholder={placeholder}
+            className="w-full pl-4 pr-12 py-2.5 text-sm bg-neutral-900 border border-neutral-700/60 rounded-xl text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-orange-500/60 disabled:opacity-50"
           />
           <button
             type="submit"

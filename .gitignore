@@ -25,6 +25,9 @@
 *.pem
 
 # debug
+debug.db
+debug.db-shm
+debug.db-wal
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

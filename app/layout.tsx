@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Map AI | Autonomous Observability & Context Engine",
-  description: "Deterministic execution tracing, 4-tier context compression, and live self-healing pipelines for autonomous coding agents.",
+  title: "Map AI | Real Codebase Debugger",
+  description: "Load any GitHub repo or zip file and debug it with AI. Ask questions, get answers, fix bugs.",
 };
 
 export default function RootLayout({
