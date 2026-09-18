@@ -7,12 +7,14 @@ import { Send, Terminal, FileCode, CheckCircle2, XCircle, Bot, User } from 'luci
 interface ChatPanelProps {
   messages: Message[];
   isRunning: boolean;
+  error: string | null;
   onSendMessage: (text: string) => void;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   isRunning,
+  error,
   onSendMessage
 }) => {
   const [inputText, setInputText] = useState('');
@@ -41,6 +43,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       {/* Messages Scroll Area */}
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/60 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+            <XCircle className="w-4 h-4 text-red-400" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {messages.map((msg) => {
           if (msg.role === 'system') {
             return (

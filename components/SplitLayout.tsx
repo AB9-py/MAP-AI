@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Message, 
   TraceSpan, 
@@ -18,6 +18,9 @@ import { TimeTravelModal } from './TimeTravelModal';
 
 export const SplitLayout: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(INITIAL_CHAT_MESSAGES);
+  const messagesRef = useRef<Message[]>(INITIAL_CHAT_MESSAGES);
+  const latestRequestRef = useRef(0);
+  const hasAutoRunRef = useRef(false);
   const [spans, setSpans] = useState<TraceSpan[]>([]);
   const [contextState, setContextState] = useState<ContextMemoryState | null>(null);
   const [tokenMetrics, setTokenMetrics] = useState<TokenMetrics>({
@@ -36,16 +39,26 @@ export const SplitLayout: React.FC = () => {
     totalMs: 0
   });
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string>('failure-healing');
   const [selectedSpanForModal, setSelectedSpanForModal] = useState<TraceSpan | null>(null);
 
-  // Auto-run default scenario on initial mount for instant live demo experience
   useEffect(() => {
-    executeAgentRun('failure-healing');
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Auto-run default scenario on initial mount for instant live demo experience.
+  // Guard against React Strict Mode double-invoking effects in development.
+  useEffect(() => {
+    if (hasAutoRunRef.current) return;
+    hasAutoRunRef.current = true;
+    void executeAgentRun('failure-healing');
   }, []);
 
   const executeAgentRun = async (scenarioId: string, customPrompt?: string) => {
+    const requestId = ++latestRequestRef.current;
     setIsRunning(true);
+    setFetchError(null);
     setActiveScenarioId(scenarioId);
 
     try {
@@ -54,23 +67,38 @@ export const SplitLayout: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenarioId,
-          existingMessages: messages,
+          existingMessages: messagesRef.current,
           customPrompt
         })
       });
 
-      const data = await response.json();
-      if (data.success) {
-        setSpans(data.spans);
-        setMessages(data.messages);
-        setContextState(data.contextState);
-        setTokenMetrics(data.tokenMetrics);
-        setLatencyMetrics(data.latencyMetrics);
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || `Request failed with status ${response.status}`);
       }
+
+      if (requestId !== latestRequestRef.current) {
+        return;
+      }
+
+      setSpans(data.spans);
+      messagesRef.current = data.messages;
+      setMessages(data.messages);
+      setContextState(data.contextState);
+      setTokenMetrics(data.tokenMetrics);
+      setLatencyMetrics(data.latencyMetrics);
     } catch (err) {
+      if (requestId !== latestRequestRef.current) {
+        return;
+      }
+      const message = err instanceof Error ? err.message : 'Failed to fetch';
+      setFetchError(message);
       console.error('Agent run failed:', err);
     } finally {
-      setIsRunning(false);
+      if (requestId === latestRequestRef.current) {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -83,6 +111,8 @@ export const SplitLayout: React.FC = () => {
   };
 
   const handleReset = () => {
+    setFetchError(null);
+    messagesRef.current = INITIAL_CHAT_MESSAGES;
     setMessages(INITIAL_CHAT_MESSAGES);
     setSpans([]);
     setContextState(null);
@@ -136,6 +166,7 @@ export const SplitLayout: React.FC = () => {
         <ChatPanel
           messages={messages}
           isRunning={isRunning}
+          error={fetchError}
           onSendMessage={handleSendMessage}
         />
 
