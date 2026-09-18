@@ -93,7 +93,7 @@ If no code change is needed (e.g. it is an explanation-only question), set "sugg
 The "steps" array should show 3-5 logical analysis steps you performed (e.g., "Parsed file tree", "Located bug", "Generated fix").`;
 
   const response = await genai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.6-flash',
     contents: prompt,
   });
 
